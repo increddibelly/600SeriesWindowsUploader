@@ -6,14 +6,15 @@ using Device.Net;
 using Hid.Net.Windows;
 using WindowsUploader.ContourNextLink24Manager;
 
-namespace ContourNextLink24Manager
+namespace ContourNextLink24Manager.Device
 {
-    public class CNL24DeviceManager
+    public class CNL24DeviceManager : IDeviceManager
     {
         private readonly ILogger _logger = new DeviceLogger();
 
-        private readonly FilterDeviceDefinition ContourNextLink24DeviceDefinition = 
-            new FilterDeviceDefinition {
+        private readonly FilterDeviceDefinition ContourNextLink24DeviceDefinition =
+            new FilterDeviceDefinition
+            {
                 DeviceType = DeviceType.Hid,
                 VendorId = CNL24Definition.VendorId,
                 ProductId = CNL24Definition.PID,
@@ -22,7 +23,8 @@ namespace ContourNextLink24Manager
 
         public async Task<IDevice> Initialize()
         {
-            try {
+            try
+            {
                 WindowsHidDeviceFactory.Register(_logger);
 
                 var devices = await DeviceManager.Current.GetDevicesAsync(new List<FilterDeviceDefinition> { ContourNextLink24DeviceDefinition });
@@ -31,7 +33,8 @@ namespace ContourNextLink24Manager
                 await selectedDevice.InitializeAsync();
 
                 return selectedDevice;
-            } catch (Exception ex)
+            }
+            catch (Exception ex)
             {
                 _logger.Log(ex.Message, "CNL24Manager", ex, LogLevel.Error);
             }

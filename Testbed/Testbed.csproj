@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ContourNextLink24Manager\ContourNextLink24Manager.csproj" />
+    <ProjectReference Include="..\NightscoutClient\NightscoutClient.csproj" />
   </ItemGroup>
 
 </Project>

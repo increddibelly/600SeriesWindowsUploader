@@ -34,6 +34,7 @@ namespace WindowsUploader.ContourNextLink24Manager
             } catch (Exception x)
             {
                 // logging should not break the app.
+                var msg = x.Message;
                 Debugger.Break();
             }
         }

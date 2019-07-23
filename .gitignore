@@ -3,3 +3,6 @@
 */bin/
 /bin/*
 /obj/*
+*.java
+/java source/java source.csproj
+*.csproj.user

@@ -1,5 +1,9 @@
-﻿using ContourNextLink24Manager;
+﻿using ContourNextLink24Manager.Device;
+using NightscoutClient;
+using NightscoutClient.CodeGeneration;
 using System;
+using System.IO;
+using System.Reflection;
 using System.Threading.Tasks;
 
 namespace Testbed
@@ -8,6 +12,8 @@ namespace Testbed
     {
         static async Task Main(string[] args)
         {
+            await ClientGenerator.Run(Secrets.NightscoutSiteURI, GetTargetPath());
+
             Console.WriteLine("Initializing Contour Next Link...");
             var mgr = new CNL24DeviceManager();
             var device = await mgr.Initialize();
@@ -19,6 +25,14 @@ namespace Testbed
             Console.WriteLine($"DeviceId = {device.DeviceId}");
             
             Console.ReadKey();
+        }
+
+        private static string GetTargetPath()
+        {
+            var appLocation = Assembly.GetExecutingAssembly().CodeBase; // "file:///C:/Repos/600SeriesWindowsUploader/Testbed/bin/Debug/netcoreapp3.0/Testbed.dll
+            var rootFolder = appLocation.Replace("Testbed/bin/Debug/netcoreapp3.0/Testbed.dll", "");
+            var result = Path.Combine(rootFolder, @"NightscoutClient\Api\Client.cs");
+            return result;
         }
     }
 }

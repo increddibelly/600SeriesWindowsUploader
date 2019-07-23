@@ -5,7 +5,11 @@ VisualStudioVersion = 16.0.29021.104
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ContourNextLink24Manager", "ContourNextLink24Manager\ContourNextLink24Manager.csproj", "{92BBFBD0-1301-4DE4-B731-75375CB897AA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Testbed", "Testbed\Testbed.csproj", "{90E59B92-0D47-4C80-BD48-71E02AF6962C}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Testbed", "Testbed\Testbed.csproj", "{90E59B92-0D47-4C80-BD48-71E02AF6962C}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "WindowsUploader.Tests", "WindowsUploader.Tests\WindowsUploader.Tests.csproj", "{4EA2E1BB-BA0F-4E59-B9F2-2A4D31033F5D}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "NightscoutClient", "NightscoutClient\NightscoutClient.csproj", "{9D549732-F703-4B99-BB9F-8347E6DA2864}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -13,10 +17,6 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{93851357-19B1-4AA1-A8B9-4B79E7E971C0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{93851357-19B1-4AA1-A8B9-4B79E7E971C0}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{93851357-19B1-4AA1-A8B9-4B79E7E971C0}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{93851357-19B1-4AA1-A8B9-4B79E7E971C0}.Release|Any CPU.Build.0 = Release|Any CPU
 		{92BBFBD0-1301-4DE4-B731-75375CB897AA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{92BBFBD0-1301-4DE4-B731-75375CB897AA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{92BBFBD0-1301-4DE4-B731-75375CB897AA}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -25,6 +25,14 @@ Global
 		{90E59B92-0D47-4C80-BD48-71E02AF6962C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{90E59B92-0D47-4C80-BD48-71E02AF6962C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{90E59B92-0D47-4C80-BD48-71E02AF6962C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4EA2E1BB-BA0F-4E59-B9F2-2A4D31033F5D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4EA2E1BB-BA0F-4E59-B9F2-2A4D31033F5D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4EA2E1BB-BA0F-4E59-B9F2-2A4D31033F5D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4EA2E1BB-BA0F-4E59-B9F2-2A4D31033F5D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9D549732-F703-4B99-BB9F-8347E6DA2864}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9D549732-F703-4B99-BB9F-8347E6DA2864}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9D549732-F703-4B99-BB9F-8347E6DA2864}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9D549732-F703-4B99-BB9F-8347E6DA2864}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

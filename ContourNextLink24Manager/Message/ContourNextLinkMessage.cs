@@ -1,9 +1,9 @@
-﻿
+﻿using ContourNextLink24Manager.Device.Usb;
+using ContourNextLink24Manager.Encryption;
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
+using System.Threading.Tasks;
 
 namespace ContourNextLink24Manager.Message
 {
@@ -42,6 +42,8 @@ namespace ContourNextLink24Manager.Message
     {
         private static string TAG => System.Reflection.MethodBase.GetCurrentMethod().DeclaringType.Name;
 
+        public Logger Log { get; private set; }
+
         public const int CLEAR_TIMEOUT_MS = 1000; // note: 2000ms was used for v5.1
         public const int ERROR_CLEAR_TIMEOUT_MS = 2000;
         public const int PRESEND_CLEAR_TIMEOUT_MS = 100;
@@ -54,20 +56,19 @@ namespace ContourNextLink24Manager.Message
         private const int MULTIPACKET_TIMEOUT_MS = 1000;
         private const int SEGMENT_RETRY = 10;
 
-        private const int USB_MESSAGE_SIZE = 60;
         private const int USB_BLOCKSIZE = 64;
+        private const int USB_MAX_MESSAGE_SIZE = 60;
         private const string USB_HEADER = "ABC";
+        private static int USB_HEADER_SIZE => USB_HEADER_SIZE;
+        private static MessageBuffer HeaderBytes => new MedtronicMessageBuffer(USB_HEADER);
 
         protected byte[] mPayload;
+        
+        public byte[] Encode() => mPayload.ToArray();
 
         protected ContourNextLinkMessage(byte[] bytes)
         {
             SetPayload(bytes);
-        }
-
-        public byte[] Encode()
-        {
-            return mPayload.ToArray(); 
         }
 
         // FIXME - get rid of this - make a Builder instead
@@ -82,19 +83,21 @@ namespace ContourNextLink24Manager.Message
         protected void SendMessage(UsbHidDriver mDevice)
         {
             int pos = 0;
-            byte[] message = Encode();
+            var message = Encode();
 
+            // chop into pieces and send each individual piece
             while (message.Length > pos)
             {
-                byte[] outputBuffer = new byte[USB_BLOCKSIZE];
-                int sendLength = (pos + USB_MESSAGE_SIZE > message.Length) 
-                    ? message.Length - pos 
-                    : USB_MESSAGE_SIZE;
-                outputBuffer.Put(Encoding.ASCII.GetBytes(USB_HEADER));
+                var outputBuffer =new MedtronicMessageBuffer(USB_BLOCKSIZE);
+                int sendLength = (pos + USB_MAX_MESSAGE_SIZE > message.Length)
+                    ? message.Length - pos
+                    : USB_MAX_MESSAGE_SIZE;
+                outputBuffer.Put(HeaderBytes);
                 outputBuffer.Put((byte)sendLength);
                 outputBuffer.Put(message, pos, sendLength);
 
-                mDevice.write(outputBuffer, WRITE_TIMEOUT_MS);
+                // separate the send concern
+                mDevice.Write(outputBuffer, WRITE_TIMEOUT_MS);
                 pos += sendLength;
 
                 string outputstring = HexDump.DumpHexstring(outputBuffer);
@@ -102,17 +105,16 @@ namespace ContourNextLink24Manager.Message
             }
         }
 
-        protected byte[] ReadMessage(UsbHidDriver mDevice, int timeout = READ_TIMEOUT_MS)
+        protected async Task<byte[]> ReadMessage(UsbHidDriver mDevice, int timeout = READ_TIMEOUT_MS)
         {
             ByteArrayOutputStream responseMessage = new ByteArrayOutputStream();
 
-            byte[] responseBuffer = new byte[USB_BLOCKSIZE];
-            int bytesRead;
             int messageSize = 0;
-
+            int bytesRead;
             do
             {
-                bytesRead = mDevice.read(responseBuffer, timeout);
+                var rawBytes = await mDevice.Read(timeout);
+                bytesRead = rawBytes?.Length ?? -1;
 
                 if (bytesRead == -1)
                 {
@@ -121,52 +123,57 @@ namespace ContourNextLink24Manager.Message
                 else if (bytesRead > 0)
                 {
                     // Validate the header
-                    byte[] header = new byte[USB_HEADER.Length];
-                    header.put(responseBuffer, 0, USB_HEADER.Length);
-                    string headerstring = new string(header.array());
-                    if (!headerstring.equals(USB_HEADER))
-                    {
-                        throw new IOException("Unexpected header received");
-                    }
-                    messageSize = responseBuffer[3];
+                    var responseBuffer = new MedtronicMessageBuffer(bytesRead);
+                    ValidateHeader(responseBuffer);
+                    messageSize = responseBuffer.MessageLength;
                     responseMessage.write(responseBuffer, 4, messageSize);
                 }
                 else
                 {
                     Log.w(TAG, "readMessage: got a zero-sized response.");
                 }
-            } while (bytesRead > 0 && messageSize == USB_MESSAGE_SIZE);
+            } while (bytesRead > 0 && messageSize == USB_MAX_MESSAGE_SIZE);
 
-            string responsestring = HexDump.dumpHexstring(responseMessage.toByteArray());
+            string responsestring = HexDump.DumpHexstring(responseMessage.toByteArray());
             Log.d(TAG, "READ: " + responsestring);
 
             return responseMessage.toByteArray();
         }
 
-        // safety check to make sure an expected 0x81 response is received before next expected 0x80 response
-        // very infrequent as clearMessage catches most issues but very important to save a CNL error situation
-
-        protected byte[] ReadMessage_0x81(UsbHidDriver mDevice)
+        private static void ValidateHeader(MessageBuffer responseBuffer)
         {
-            return ReadMessage_0x81(mDevice, READ_TIMEOUT_MS);
+            if (!responseBuffer.StartsWith(HeaderBytes))
+            {
+                throw new IOException("Unexpected header received");
+            }
+            //var header =new MedtronicMessageBuffer(USB_HEADER_SIZE);
+            //header.Put(responseBuffer, 0, USB_HEADER_SIZE);
+            //string headerstring = new string(header.array());
+            //if (!headerstring.equals(USB_HEADER))
         }
 
-        protected byte[] ReadMessage_0x81(UsbHidDriver mDevice, int timeout)
+        // safety check to make sure an expected 0x81 response is received before next expected 0x80 response
+        // very infrequent as clearMessage catches most issues but very important to save a CNL error situation
+        protected async Task<byte[]> ReadMessage_0x81(UsbHidDriver mDevice, int timeout = READ_TIMEOUT_MS)
         {
             byte[] responseBytes;
             bool doRetry;
+            var expected = (byte)0x81;
+
             do
             {
-                responseBytes = ReadMessage(mDevice, timeout);
-                if (responseBytes[18] != (byte)0x81)
+                responseBytes = await ReadMessage(mDevice, timeout);
+                var actual = responseBytes[18];
+                if (actual != expected)
                 {
                     doRetry = true;
-                    Log.d(TAG, "readMessage0x81: did not get 0x81 response, got " + HexDump.ToHexstring(responseBytes[18]));
+                    Log.d(TAG, "readMessage0x81: did not get 0x81 response, got " + HexDump.ToHexstring(actual));
                     MedtronicCnlService.cnl0x81++;
                 }
                 else
                 {
                     doRetry = false;
+                    break;
                 }
 
             } while (doRetry);
@@ -211,7 +218,7 @@ namespace ContourNextLink24Manager.Message
             return count;
         }
 
-        protected byte[] SendToPump(UsbHidDriver mDevice, MedtronicCnlSession pumpSession, string tag)
+        protected async Task<byte[]> SendToPump(UsbHidDriver mDevice, MedtronicCnlSession pumpSession, string tag)
         {
             tag = " (" + tag + ")";
             byte[] payload;
@@ -225,7 +232,7 @@ namespace ContourNextLink24Manager.Message
 
             try
             {
-                payload = ReadMessage_0x81(mDevice);
+                payload = await ReadMessage_0x81(mDevice);
             }
             catch (TimeoutException e)
             {
@@ -269,7 +276,7 @@ namespace ContourNextLink24Manager.Message
             return payload;
         }
 
-        protected byte[] ReadFromPump(UsbHidDriver mDevice, MedtronicCnlSession pumpSession, string tag)
+        protected async Task<byte[]> ReadFromPump(UsbHidDriver mDevice, MedtronicCnlSession pumpSession, string tag)
         {
             tag = " (" + tag + ")";
 
@@ -292,14 +299,14 @@ namespace ContourNextLink24Manager.Message
                     {
                         if (expectedSegments < 1)
                         {
-                            tupple = multipacketSession.missingSegments();
+                            tupple = multipacketSession.MissingSegments();
                             new MultipacketResendPacketsMessage(pumpSession, tupple).send(mDevice);
                             expectedSegments = read16BEtoUInt(tupple, 0x02);
                         }
                         try
                         {
-                            payload = ReadMessage(mDevice, MULTIPACKET_TIMEOUT_MS);
-                            retry = 0;
+                            payload = await ReadMessage(mDevice, MULTIPACKET_TIMEOUT_MS);
+                            break;
                         }
                         catch (TimeoutException e)
                         {
@@ -314,7 +321,7 @@ namespace ContourNextLink24Manager.Message
                 {
                     try
                     {
-                        payload = ReadMessage(mDevice, READ_TIMEOUT_MS);
+                        payload = await ReadMessage(mDevice, READ_TIMEOUT_MS);
                     }
                     catch (TimeoutException e)
                     {
@@ -324,36 +331,36 @@ namespace ContourNextLink24Manager.Message
 
                 if (payload.Length < 0x0039)
                 {
-                    Log.d(TAG, "*** bad response" + HexDump.dumpHexstring(payload, 0x12, payload.Length - 0x14));
+                    Log.d(TAG, "*** bad response" + HexDump.DumpHexstring(payload, 0x12, payload.Length - 0x14));
                     fetchMoreData = true;
-
                 }
                 else
                 {
                     decrypted = Decode(pumpSession, payload);
 
                     cmd = read16BEtoUInt(decrypted, RESPONSE_COMMAND);
-                    Log.d(TAG, "CMD: " + HexDump.toHexstring(cmd));
+                    Log.d(TAG, "CMD: " + HexDump.ToHexstring(cmd));
 
                     if (MedtronicSendMessageRequestMessage.MessageType.EHSM_SESSION.response(cmd))
-                    { // EHSM_SESSION(0)
+                    { 
+                        // EHSM_SESSION(0)
                         Log.d(TAG, "*** EHSM response" + HexDump.DumpHexstring(decrypted));
                         fetchMoreData = true;
                     }
                     else if (MedtronicSendMessageRequestMessage.MessageType.NAK_COMMAND.response(cmd))
                     {
                         Log.d(TAG, "*** NAK response" + HexDump.DumpHexstring(decrypted));
-                        ClearMessage(mDevice, ERROR_CLEAR_TIMEOUT_MS); // if multipacket was in progress we may need to clear 2 EHSM_SESSION(1) messages from pump
+                        ClearMessage(mDevice, ERROR_CLEAR_TIMEOUT_MS); 
+                        // if multipacket was in progress we may need to clear 2 EHSM_SESSION(1) messages from pump
                         short nakcmd = read16BEtoShort(decrypted, 3);
                         byte nakcode = decrypted[5];
-                        throw new UnexpectedMessageException("Pump sent a NAK(" + string.format("%02X", nakcmd) + ":" + string.format("%02X", nakcode) + ") response" + tag);
-                        //fetchMoreData = false;
+                        throw new UnexpectedMessageException("Pump sent a NAK(" + string.Format("%02X", nakcmd) + ":" + string.Format("%02X", nakcode) + ") response" + tag);
                     }
                     else if (MedtronicSendMessageRequestMessage.MessageType.INITIATE_MULTIPACKET_TRANSFER.response(cmd))
                     {
                         multipacketSession = new MultipacketSession(decrypted);
                         new AckMessage(pumpSession, MedtronicSendMessageRequestMessage.MessageType.INITIATE_MULTIPACKET_TRANSFER.response()).send(mDevice);
-                        expectedSegments = multipacketSession._packetsToFetch;
+                        expectedSegments = multipacketSession.PacketsToFetch;
                         fetchMoreData = true;
                     }
                     else if (MedtronicSendMessageRequestMessage.MessageType.MULTIPACKET_SEGMENT_TRANSMISSION.response(cmd))
@@ -362,22 +369,20 @@ namespace ContourNextLink24Manager.Message
                         multipacketSession.AddSegment(decrypted);
                         expectedSegments--;
 
-                        if (multipacketSession.PayloadComplete())
+                        if (multipacketSession.PayloadComplete)
                         {
                             Log.d(TAG, "*** Multisession Complete");
                             new AckMessage(pumpSession, MedtronicSendMessageRequestMessage.MessageType.MULTIPACKET_SEGMENT_TRANSMISSION.response()).send(mDevice);
 
                             // read 0412 = EHSM_SESSION(1)
-                            payload = ReadMessage(mDevice, READ_TIMEOUT_MS);
+                            payload = await ReadMessage(mDevice, READ_TIMEOUT_MS);
                             decrypted = Decode(pumpSession, payload);
                             Log.d(TAG, "*** response" + HexDump.DumpHexstring(decrypted));
 
-                            return multipacketSession._response;
-                            //fetchMoreData = false;
+                            return multipacketSession.Response;
                         }
                         else
                             fetchMoreData = true;
-
                     }
                     else if (MedtronicSendMessageRequestMessage.MessageType.END_HISTORY_TRANSMISSION.response(cmd))
                     {
@@ -427,8 +432,21 @@ namespace ContourNextLink24Manager.Message
                 }
             }
 
-            // when returning non-multipacket decrypted data we need to trim the 2 byte checksum
-            return (decrypted != null ? Arrays.copyOfRange(decrypted, 0, decrypted.Length - 2) : payload);
+            // when returning non-multipacket decrypted data, we need to trim the 2 byte checksum
+            if (decrypted == null) { 
+                return payload;
+            }
+            return decrypted.Partial(0, decrypted.Length - 2);
+        }
+
+        private short read16BEtoShort(byte[] decrypted, int v)
+        {
+            throw new NotImplementedException();
+        }
+
+        private int read16BEtoUInt(byte[] tupple, int v)
+        {
+            throw new NotImplementedException();
         }
 
         // refactor in progress to use constants for payload offsets
@@ -481,9 +499,9 @@ namespace ContourNextLink24Manager.Message
                 throw new EncryptionException("Could not decrypt Medtronic Message (encryptedPayloadSize == 0)");
             }
 
-            byte[] encryptedPayload = new byte[encryptedPayloadSize];
+            var encryptedPayload =new MedtronicMessageBuffer(encryptedPayloadSize);
             encryptedPayload.Put(payload, MM_PAYLOAD + NGP_PAYLOAD + NGP55_PAYLOAD, encryptedPayloadSize);
-            byte[] decryptedPayload = decrypt(pumpSession.getKey(), pumpSession.getIV(), encryptedPayload);
+            var decryptedPayload = Decrypt(pumpSession.getKey(), pumpSession.getIV(), encryptedPayload);
 
             if (decryptedPayload == null)
             {
@@ -515,85 +533,6 @@ namespace ContourNextLink24Manager.Message
                 throw new EncryptionException("Could not decrypt Medtronic Message");
             }
             return decrypted;
-        }
-    }
-
-    internal class MultipacketSession
-    {
-        private readonly int _sessionSize;
-        private readonly int _packetSize;
-        private readonly int _lastPacketSize;
-        private readonly int _packetsToFetch;
-        private readonly bool[] _segments;
-        private readonly byte[] _response;
-
-        private MultipacketSession(byte[] settings)
-        {
-            _sessionSize = read32BEtoInt(settings, 0x0003);
-            _packetSize = read16BEtoUInt(settings, 0x0007);
-            _lastPacketSize = read16BEtoUInt(settings, 0x0009);
-            _packetsToFetch = read16BEtoUInt(settings, 0x000B);
-            _response = new byte[_sessionSize + 1];
-            _segments = new bool[_packetsToFetch];
-            _response[0] = settings[0]; // comDSequenceNumber
-            Log.d(TAG, $"*** Starting a new Multipacket Session. Expecting {_sessionSize} bytes of data from {_packetsToFetch} packets");
-        }
-
-        private int LastPacketNumber => _packetsToFetch - 1;
-
-        // The number of segments we've actually fetched.
-        private int NrSegmentsFilled => _segments.Count(segment => segment);
-
-        private bool PayloadComplete => NrSegmentsFilled == _packetsToFetch;
-
-        private void AddSegment(byte[] data)
-        {
-            try
-            {
-                int packetNumber = read16BEtoUInt(data, 0x0003);
-                int packetSize = data.Length - 7;
-                _segments[packetNumber] = true;
-
-                Log.d(TAG, $"*** Got a Multipacket Segment: {(packetNumber + 1)} of {_packetsToFetch}, count: {NrSegmentsFilled} [packetSize={packetSize} {_packetSize}/{_lastPacketSize}]");
-
-                if (packetNumber == LastPacketNumber &&
-                        packetSize != _lastPacketSize)
-                {
-                    throw new UnexpectedMessageException("Multipacket Transfer last packet size mismatch");
-                }
-                else if (packetNumber != LastPacketNumber &&
-                      packetSize != _packetSize)
-                {
-                    throw new UnexpectedMessageException("Multipacket Transfer packet size mismatch");
-                }
-
-                int to = (packetNumber * _packetSize) + 1;
-                int from = 5;
-                while (from < packetSize + 5) _response[to++] = data[from++];
-            }
-            catch (Exception e)
-            {
-                throw new UnexpectedMessageException("Multipacket Transfer bad segment data received", e);
-            }
-        }
-
-        private byte[] MissingSegments()
-        {
-            int packetNumber = 0;
-            int missing = 0;
-            foreach (var segment in _segments)
-            {
-                if (segment)
-                {
-                    if (missing > 0) break;
-                    packetNumber++;
-                }
-                else missing++;
-            }
-
-            Log.d(TAG, "*** Request Missing Multipacket Segments, position: " + (packetNumber + 1) + ", missing: " + missing);
-
-            return new byte[] { (byte)(packetNumber >> 8), (byte)packetNumber, (byte)(missing >> 8), (byte)missing };
         }
     }
 }

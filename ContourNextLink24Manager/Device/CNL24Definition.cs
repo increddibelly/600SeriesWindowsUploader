@@ -1,5 +1,4 @@
-﻿
-namespace WindowsUploader.ContourNextLink24Manager
+﻿namespace ContourNextLink24Manager.Device
 {
     public static class CNL24Definition
     {
